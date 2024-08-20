@@ -1,0 +1,111 @@
+from scapy.all import *
+
+class Stream:
+    def __init__(self, internal_host, external_node):
+        self.internal_host = internal_host
+        self.external_node = external_node
+        self.packets = []  # Store packets as a list
+
+def gen_streams(pcap_file):
+    packets = rdpcap(pcap_file)
+    streams = {}
+
+    for packet in packets:
+        if IP in packet and TCP in packet:
+            key = (packet[IP].src, packet[IP].dst, packet[TCP].sport, packet[TCP].dport, packet[IP].proto)
+            if key not in streams:
+                streams[key] = Stream(packet[IP].src, packet[IP].dst)
+            streams[key].packets.append(packet)
+        else:
+            # Handle packets without the IP layer or TCP layer (if needed)
+            continue
+
+    return streams
+2.
+
+from scapy.layers.tls.all import TLS
+from scapy.all import rdpcap, TLS
+from scapy.layers.tls.extensions import TLSServerNameIndication
+from collections import Counter
+
+# Function to filter and extract TLS traffic with complete handshakes
+def extract_tls_streams(pcap_file):
+    tls_streams = {}  # Dictionary to store TLS streams
+
+    # Read the pcap file
+    packets = rdpcap(pcap_file)
+
+    for packet in packets:
+        if 'IP' in packet and 'TCP' in packet:
+            src_ip = packet['IP'].src
+            src_port = packet['TCP'].sport
+            dst_ip = packet['IP'].dst
+            dst_port = packet['TCP'].dport
+            protocol = 'TCP'
+
+            # Check if the packet is using TLS (check for TLS layer)
+            if packet.haslayer(TLS):
+                tls_layer = packet[TLS]
+
+                # Check if the TLS layer contains a handshake message
+                if tls_layer.msgtype == 22:  # Handshake message type
+                    # Create a unique key for the TLS stream based on the 5-tuple
+                    stream_key = (src_ip, src_port, dst_ip, dst_port, protocol)
+
+                    # Check if the stream exists, and if not, create it
+                    if stream_key not in tls_streams:
+                        tls_streams[stream_key] = []
+
+                    # Add the TLS packet to the stream
+                    tls_streams[stream_key].append(packet)
+
+    return tls_streams
+
+# Example usage
+pcap_file = 'C:\\Users\\kriti\\OneDrive\\Desktop\\Adware-3\\Adware-3\\Test\\Test1.pcap'
+tls_streams = extract_tls_streams(pcap_file)
+
+# Now you have a dictionary of TLS streams with complete handshakes, where each key is a 5-tuple, and the value is a list of TLS packets.
+
+def extract_tls_handshake_info(tls_packets):
+    tls_info = {
+        "tls_version": [],
+        "cipher_suites": [],
+        "number_of_packets": len(tls_packets),
+        "total_bytes": sum(len(packet) for packet in tls_packets)
+    }
+
+    for packet in tls_packets:
+        tls_layer = packet[TLS]
+        
+        # Extract and append TLS version
+        tls_info["tls_version"].append(tls_layer.version)
+        
+        # Extract and append supported cipher suites
+        if tls_layer.haslayer(TLSServerNameIndication):
+            cipher_suites = tls_layer[TLSServerNameIndication].cipher_suites
+            tls_info["cipher_suites"].extend(cipher_suites)
+
+    return tls_info
+
+for stream_key, tls_packets in tls_streams.items():
+    src_ip, src_port, dst_ip, dst_port, protocol = stream_key
+    
+    # Print basic information about the stream
+    print(f"Stream: {src_ip}:{src_port} -> {dst_ip}:{dst_port} ({protocol})")
+
+    # Extract and print TLS handshake info
+    tls_info = extract_tls_handshake_info(tls_packets)
+    print(f"TLS Version(s): {', '.join(map(hex, set(tls_info['tls_version'])))}")
+    print(f"Supported Cipher Suites: {', '.join(map(hex, set(tls_info['cipher_suites'])))}")
+    print(f"Number of Packets: {tls_info['number_of_packets']}")
+    print(f"Total Bytes: {tls_info['total_bytes']} bytes")
+
+    # Add a separator for clarity between different streams
+    print("=" * 40)
+
+
+
+
+
+
